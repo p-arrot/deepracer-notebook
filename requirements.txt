@@ -1,0 +1,6 @@
+# Dependencies for deepracer-notebook
+numpy
+scipy
+shapely
+scikit-learn
+matplotlib

@@ -1,0 +1,607 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Waypoints 可视化（导入CSV）</title>
+  <style>
+    :root{
+      --bg:#0b1020; --panel:#111827; --canvas:#0f172a; --border:#273244;
+      --txt:#e5e7eb; --muted:#94a3b8; --blue:#60a5fa; --green:#22c55e; --orange:#f59e0b;
+      --red:#ef4444; --purple:#a855f7;
+    }
+    *{box-sizing:border-box}
+    body{margin:0;font-family:Arial,"PingFang SC","Microsoft YaHei",sans-serif;background:var(--bg);color:var(--txt)}
+    .layout{display:grid;grid-template-columns:1fr 360px;height:100vh}
+    .stage{position:relative;background:var(--canvas)}
+    canvas{width:100%;height:100%;display:block;cursor:crosshair}
+    .tooltip{
+      position:absolute;pointer-events:none;display:none;z-index:9;
+      background:rgba(17,24,39,.95);border:1px solid var(--border);border-radius:8px;
+      padding:8px 10px;font-size:12px;line-height:1.45;white-space:nowrap
+    }
+    .side{background:var(--panel);border-left:1px solid var(--border);padding:14px;overflow:auto;display:flex;flex-direction:column;gap:12px}
+    h2{margin:4px 0 10px;font-size:18px}
+    .muted{color:var(--muted);font-size:12px}
+    .card{border:1px solid var(--border);border-radius:10px;background:#0b1220;padding:12px}
+    .small{font-size:12px;color:var(--muted)}
+    input[type="file"]{width:100%;font-size:12px}
+    button{
+      width:100%;margin-top:10px;padding:9px 10px;border-radius:8px;border:1px solid #355a9c;
+      background:#1d4ed8;color:white;cursor:pointer;font-size:13px
+    }
+    button:hover{filter:brightness(1.08)}
+    .legend{font-size:12px;color:var(--muted);line-height:1.8}
+    .dot{width:10px;height:10px;border-radius:50%;display:inline-block;margin-right:6px;vertical-align:middle}
+    .ok{color:#34d399}
+    .err{color:#f87171}
+    .checkbox-row{display:flex;align-items:center;gap:8px;margin-top:8px}
+    .checkbox-row input[type="checkbox"]{width:16px;height:16px;cursor:pointer}
+    .checkbox-row label{cursor:pointer;font-size:12px}
+    textarea{width:100%;font-size:11px;background:#0b1220;color:#e5e7eb;border:1px solid #273244;border-radius:6px;padding:8px;resize:vertical}
+  </style>
+</head>
+<body>
+  <div class="layout">
+    <div class="stage">
+      <canvas id="cv"></canvas>
+      <div class="tooltip" id="tooltip"></div>
+    </div>
+
+    <aside class="side">
+      <h2>Waypoints 可视化</h2>
+      <div class="muted">导入CSV后，悬停数据点可查看详情。</div>
+
+      <div class="card">
+        <div><b>导入CSV</b></div>
+        <input id="fileInput" type="file" accept=".csv,text/csv" />
+        <div class="small">必需列：center_x, center_y, inner_x, inner_y, outer_x, outer_y</div>
+        <button id="loadBtn">读取并绘制</button>
+        <div id="msg" class="small" style="margin-top:8px;">尚未加载文件</div>
+      </div>
+
+      <div class="card">
+        <div><b>显示选项</b></div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="showCenter" checked>
+          <label for="showCenter">显示中心点 (Center)</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="showInner" checked>
+          <label for="showInner">显示内边界点 (Inner)</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="showOuter" checked>
+          <label for="showOuter">显示外边界点 (Outer)</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="showIndex">
+          <label for="showIndex">显示路点编号</label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div><b>统计</b></div>
+        <div id="stats" class="small" style="line-height:1.8;">点数: -</div>
+      </div>
+
+      <div class="card">
+        <div><b>赛车线</b></div>
+        <textarea id="racingLineInput" rows="6" placeholder="粘贴赛车线路径点，如：
+[0.80481861, 3.12930023, 2.5, 0.0],
+[0.82316164, 2.98396507, 2.8, 0.15],
+...&#10;&#10;格式: [[x, y, 速度, 到达时间], ...]"></textarea>
+        <button id="drawRacingLineBtn">绘制赛车线</button>
+        <div id="racingLineMsg" class="small" style="margin-top:6px;">未加载赛车线</div>
+      </div>
+
+      <div class="card" id="racingLineInfo" style="display:none;">
+        <div><b>赛车线信息</b></div>
+        <div id="racingLineStats" class="small" style="line-height:1.8;"></div>
+      </div>
+
+      <div class="card">
+        <div><b>赛车线样式</b></div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="showSpeedColor" checked>
+          <label for="showSpeedColor">速度着色（红=低速，绿=高速）</label>
+        </div>
+        <div class="checkbox-row">
+          <input type="checkbox" id="showTimeLabel">
+          <label for="showTimeLabel">显示到达时间标签</label>
+        </div>
+      </div>
+
+      <div class="card">
+        <div><b>图例</b></div>
+        <div class="legend">
+          <div><span class="dot" style="background:var(--green)"></span>Inner 边界线</div>
+          <div><span class="dot" style="background:var(--orange)"></span>Outer 边界线</div>
+          <div><span class="dot" style="background:var(--blue)"></span>Center 中心点</div>
+          <div><span class="dot" style="background:#22c55e"></span>Inner 边界点</div>
+          <div><span class="dot" style="background:#f59e0b"></span>Outer 边界点</div>
+          <div><span class="dot" style="background:var(--red)"></span>赛车线</div>
+        </div>
+      </div>
+    </aside>
+  </div>
+
+  <script>
+    const cv = document.getElementById('cv');
+    const ctx = cv.getContext('2d');
+    const tooltip = document.getElementById('tooltip');
+    const fileInput = document.getElementById('fileInput');
+    const loadBtn = document.getElementById('loadBtn');
+    const msg = document.getElementById('msg');
+    const stats = document.getElementById('stats');
+    
+    const showCenter = document.getElementById('showCenter');
+    const showInner = document.getElementById('showInner');
+    const showOuter = document.getElementById('showOuter');
+    const showIndex = document.getElementById('showIndex');
+
+    const data = { center: [], inner: [], outer: [] };
+    let racingLine = [];
+    let racingLineHasSpeed = false;
+    let transform = null;
+    let allScreenPts = [];
+    let allRacingPts = []; // 用于悬停检测
+
+    function setMsg(text, ok=true){
+      msg.textContent = text;
+      msg.className = 'small ' + (ok ? 'ok' : 'err');
+    }
+
+    function setRacingLineMsg(text, ok=true){
+      document.getElementById('racingLineMsg').textContent = text;
+      document.getElementById('racingLineMsg').className = 'small ' + (ok ? 'ok' : 'err');
+    }
+
+    function parseRacingLine(text){
+      const lines = text.replace(/\r/g,'').split('\n').filter(l => l.trim().length > 0);
+      const pts = [];
+      racingLineHasSpeed = false;
+
+      for (const line of lines){
+        // 支持 [[x,y,v,time],...] 或 [[x,y],...]
+        const m = line.match(/\[([0-9.+\-eE]+),\s*([0-9.+\-eE]+)(?:,\s*([0-9.+\-eE]+))?(?:,\s*([0-9.+\-eE]+))?\]/);
+        if (m){
+          const x = parseFloat(m[1]);
+          const y = parseFloat(m[2]);
+          const v = m[3] !== undefined ? parseFloat(m[3]) : null;
+          const t = m[4] !== undefined ? parseFloat(m[4]) : null;
+
+          if (!isNaN(x) && !isNaN(y)){
+            if (v !== null && t !== null) racingLineHasSpeed = true;
+            pts.push({x, y, v, t});
+          }
+        }
+      }
+
+      // 如果有速度和时间，检查时间是否为累加时间
+      // 如果时间值越来越大，认为是累加时间；如果大部分小于1秒，可能是时间差
+      if (racingLineHasSpeed && pts.length > 1){
+        let increasing = 0;
+        for (let i = 1; i < pts.length; i++){
+          if (pts[i].t > pts[i-1].t) increasing++;
+        }
+        // 如果超过80%的时间是递增的，认为是累加时间，不需要转换
+        // 否则认为是时间差，需要转换为累加时间
+        const increasingRatio = increasing / (pts.length - 1);
+        if (increasingRatio < 0.8){
+          // 转换为累加时间
+          let cumTime = 0;
+          for (let i = 0; i < pts.length; i++){
+            const currentT = pts[i].t;
+            pts[i].t = cumTime;
+            cumTime += currentT;
+          }
+        }
+      }
+
+      return pts;
+    }
+
+    function drawRacingLine(){
+      if (!racingLine.length || !transform) return;
+
+      // 收集所有赛车线点用于悬停
+      allRacingPts = [];
+      for (let i = 0; i < racingLine.length; i++){
+        const s = worldToScreen(racingLine[i].x, racingLine[i].y);
+        allRacingPts.push({sx: s.x, sy: s.y, raw: racingLine[i], idx: i});
+      }
+
+      // 计算速度范围（用于着色）
+      let minV = Infinity, maxV = -Infinity;
+      if (racingLineHasSpeed){
+        for (const pt of racingLine){
+          if (pt.v !== null){ minV = Math.min(minV, pt.v); maxV = Math.max(maxV, pt.v); }
+        }
+      }
+      const vRange = maxV - minV || 1;
+
+      // 绘制赛车线（根据速度着色）
+      for (let i = 0; i < racingLine.length; i++){
+        const pt = racingLine[i];
+        const s = worldToScreen(pt.x, pt.y);
+        const next = racingLine[(i + 1) % racingLine.length];
+        const sn = worldToScreen(next.x, next.y);
+
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(sn.x, sn.y);
+
+        if (racingLineHasSpeed && showSpeedColor.checked){
+          const t = (pt.v - minV) / vRange; // 0-1
+          const r = Math.round(255 * (1 - t));
+          const g = Math.round(255 * t);
+          ctx.strokeStyle = `rgb(${r},${g},0)`;
+        } else {
+          ctx.strokeStyle = '#ef4444';
+        }
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
+      // 起点标记
+      const start = worldToScreen(racingLine[0].x, racingLine[0].y);
+      ctx.beginPath();
+      ctx.arc(start.x, start.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = '#ef4444';
+      ctx.fill();
+      ctx.fillStyle = 'white';
+      ctx.font = 'bold 10px Arial';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText('S', start.x, start.y);
+
+      // 赛车线数据点
+      for (let i = 0; i < racingLine.length; i++){
+        const pt = racingLine[i];
+        const s = worldToScreen(pt.x, pt.y);
+
+        if (racingLineHasSpeed && showSpeedColor.checked){
+          const t = (pt.v - minV) / vRange;
+          const r = Math.round(255 * (1 - t));
+          const g = Math.round(255 * t);
+          ctx.fillStyle = `rgb(${r},${g},0)`;
+        } else {
+          ctx.fillStyle = '#fca5a5';
+        }
+
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, 3.5, 0, Math.PI * 2);
+        ctx.fill();
+
+        // 显示时间标签
+        if (racingLineHasSpeed && showTimeLabel.checked && pt.t !== null){
+          ctx.fillStyle = '#94a3b8';
+          ctx.font = '9px Arial';
+          ctx.textAlign = 'center';
+          ctx.fillText(pt.t.toFixed(1), s.x, s.y - 10);
+        }
+      }
+
+      // 更新统计信息
+      if (racingLineHasSpeed){
+        document.getElementById('racingLineInfo').style.display = 'block';
+        const totalTime = racingLine[racingLine.length - 1].t;
+        document.getElementById('racingLineStats').innerHTML =
+          `<b>路径点:</b> ${racingLine.length} 个<br>` +
+          `<b>速度范围:</b> ${minV.toFixed(2)} ~ ${maxV.toFixed(2)} m/s<br>` +
+          `<b>总到达时间:</b> ${totalTime ? totalTime.toFixed(2) : '?'} s`;
+      }
+    }
+
+    function resizeCanvas(){
+      const dpr = window.devicePixelRatio || 1;
+      const rect = cv.getBoundingClientRect();
+      cv.width = Math.floor(rect.width * dpr);
+      cv.height = Math.floor(rect.height * dpr);
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      draw();
+    }
+
+    function parseCSV(text){
+      const lines = text.replace(/\r/g,'').split('\n').filter(l => l.trim().length > 0);
+      if (lines.length < 2) throw new Error('CSV内容为空或只有表头');
+
+      const headers = lines[0].split(',').map(s => s.trim());
+      const need = ['center_x','center_y','inner_x','inner_y','outer_x','outer_y'];
+      for (const k of need){
+        if (!headers.includes(k)) throw new Error('缺少列: ' + k);
+      }
+
+      const idx = {};
+      headers.forEach((h,i)=>idx[h]=i);
+
+      const rows = [];
+      for (let i=1;i<lines.length;i++){
+        const cols = lines[i].split(',').map(s=>s.trim());
+        if (cols.length < headers.length) continue;
+
+        const row = {
+          center_x: parseFloat(cols[idx.center_x]),
+          center_y: parseFloat(cols[idx.center_y]),
+          inner_x:  parseFloat(cols[idx.inner_x]),
+          inner_y:  parseFloat(cols[idx.inner_y]),
+          outer_x:  parseFloat(cols[idx.outer_x]),
+          outer_y:  parseFloat(cols[idx.outer_y]),
+        };
+        if (Object.values(row).some(v => Number.isNaN(v))) continue;
+        rows.push(row);
+      }
+      if (rows.length < 2) throw new Error('有效数据行不足');
+      return rows;
+    }
+
+    function loadRows(rows){
+      data.center = rows.map((r,i)=>({x:r.center_x,y:r.center_y,idx:i}));
+      data.inner  = rows.map((r,i)=>({x:r.inner_x,y:r.inner_y,idx:i}));
+      data.outer  = rows.map((r,i)=>({x:r.outer_x,y:r.outer_y,idx:i}));
+
+      const bC = getBounds(data.center);
+      const bI = getBounds(data.inner);
+      const bO = getBounds(data.outer);
+
+      stats.innerHTML =
+        `<b>Center</b> (${data.center.length} 点)<br>` +
+        `X: ${bC.minX.toFixed(4)} ~ ${bC.maxX.toFixed(4)}<br>` +
+        `Y: ${bC.minY.toFixed(4)} ~ ${bC.maxY.toFixed(4)}<br><br>` +
+        `<b>Inner</b> (${data.inner.length} 点)<br>` +
+        `X: ${bI.minX.toFixed(4)} ~ ${bI.maxX.toFixed(4)}<br>` +
+        `Y: ${bI.minY.toFixed(4)} ~ ${bI.maxY.toFixed(4)}<br><br>` +
+        `<b>Outer</b> (${data.outer.length} 点)<br>` +
+        `X: ${bO.minX.toFixed(4)} ~ ${bO.maxX.toFixed(4)}<br>` +
+        `Y: ${bO.minY.toFixed(4)} ~ ${bO.maxY.toFixed(4)}`;
+    }
+
+    function getBounds(all){
+      let minX=Infinity,minY=Infinity,maxX=-Infinity,maxY=-Infinity;
+      for (const p of all){
+        if (p.x<minX) minX=p.x;
+        if (p.x>maxX) maxX=p.x;
+        if (p.y<minY) minY=p.y;
+        if (p.y>maxY) maxY=p.y;
+      }
+      return {minX,minY,maxX,maxY};
+    }
+
+    function buildTransform(){
+      const all = [...data.center,...data.inner,...data.outer];
+      if (!all.length){ transform = null; return; }
+
+      const b = getBounds(all);
+      const w = cv.clientWidth, h = cv.clientHeight, pad = 40;
+      const spanX = Math.max(1e-9, b.maxX - b.minX);
+      const spanY = Math.max(1e-9, b.maxY - b.minY);
+      const s = Math.min((w-2*pad)/spanX, (h-2*pad)/spanY);
+
+      const ox = pad + (w - 2*pad - spanX*s)/2 - b.minX*s;
+      const oy = pad + (h - 2*pad - spanY*s)/2 + b.maxY*s;
+      transform = {s,ox,oy};
+    }
+
+    function worldToScreen(x,y){
+      return { x:x*transform.s + transform.ox, y:transform.oy - y*transform.s };
+    }
+
+    function drawPolyline(arr, color, width=2, dashed=false){
+      if (!arr.length || !transform) return;
+      ctx.beginPath();
+      let p = worldToScreen(arr[0].x, arr[0].y);
+      ctx.moveTo(p.x,p.y);
+      for (let i=1;i<arr.length;i++){
+        p = worldToScreen(arr[i].x, arr[i].y);
+        ctx.lineTo(p.x,p.y);
+      }
+      p = worldToScreen(arr[0].x, arr[0].y);
+      ctx.lineTo(p.x,p.y);
+      ctx.strokeStyle = color;
+      ctx.lineWidth = width;
+      if (dashed){
+        ctx.setLineDash([5, 5]);
+      } else {
+        ctx.setLineDash([]);
+      }
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    function drawPoints(arr, color, marker, size=3){
+      if (!arr.length || !transform) return;
+      for (const pt of arr){
+        const s = worldToScreen(pt.x, pt.y);
+        ctx.beginPath();
+        if (marker === 'circle'){
+          ctx.arc(s.x, s.y, size, 0, Math.PI*2);
+        } else if (marker === 'triangle'){
+          ctx.moveTo(s.x, s.y - size);
+          ctx.lineTo(s.x - size, s.y + size);
+          ctx.lineTo(s.x + size, s.y + size);
+          ctx.closePath();
+        } else if (marker === 'square'){
+          ctx.rect(s.x - size, s.y - size, size*2, size*2);
+        }
+        ctx.fillStyle = color;
+        ctx.fill();
+      }
+    }
+
+    function drawIndexLabels(arr, color){
+      if (!arr.length || !transform) return;
+      ctx.font = '10px Arial';
+      ctx.fillStyle = color;
+      for (const pt of arr){
+        const s = worldToScreen(pt.x, pt.y);
+        ctx.fillText(pt.idx.toString(), s.x + 4, s.y - 4);
+      }
+    }
+
+    function drawCenterPoints(){
+      allScreenPts = [];
+      const showC = showCenter.checked;
+      const showI = showInner.checked;
+      const showO = showOuter.checked;
+      const showIIdx = showIndex.checked;
+      
+      // 收集所有屏幕上的点用于悬停检测
+      for (const p of data.center){
+        const s = worldToScreen(p.x, p.y);
+        allScreenPts.push({sx:s.x, sy:s.y, raw:p, type:'center'});
+      }
+      for (const p of data.inner){
+        const s = worldToScreen(p.x, p.y);
+        allScreenPts.push({sx:s.x, sy:s.y, raw:p, type:'inner'});
+      }
+      for (const p of data.outer){
+        const s = worldToScreen(p.x, p.y);
+        allScreenPts.push({sx:s.x, sy:s.y, raw:p, type:'outer'});
+      }
+
+      // 绘制边界线
+      drawPolyline(data.inner, '#22c55e', 2);
+      drawPolyline(data.outer, '#f59e0b', 2);
+      
+      // 绘制中心线（虚线）
+      drawPolyline(data.center, '#64748b', 1.5, true);
+
+      // 绘制边界点
+      if (showI){
+        drawPoints(data.inner, '#22c55e', 'triangle', 3);
+        if (showIIdx) drawIndexLabels(data.inner, '#22c55e');
+      }
+      if (showO){
+        drawPoints(data.outer, '#f59e0b', 'square', 3);
+        if (showIIdx) drawIndexLabels(data.outer, '#f59e0b');
+      }
+      
+      // 绘制中心点
+      if (showC){
+        drawPoints(data.center, '#60a5fa', 'circle', 3.5);
+        if (showIIdx){
+          ctx.font = '10px Arial';
+          ctx.fillStyle = '#60a5fa';
+          for (const p of data.center){
+            const s = worldToScreen(p.x, p.y);
+            ctx.fillText(p.idx.toString(), s.x + 4, s.y - 4);
+          }
+        }
+      }
+    }
+
+    function draw(){
+      const w = cv.clientWidth, h = cv.clientHeight;
+      ctx.clearRect(0,0,w,h);
+      buildTransform();
+      if (!transform) return;
+      drawCenterPoints();
+      drawRacingLine();
+    }
+
+    function findHoverPoint(mx,my){
+      let best=null, bestD2=Infinity;
+      const hitR2 = 12*12;
+
+      // 检查赛车线点
+      for (const p of allRacingPts){
+        const dx=mx-p.sx, dy=my-p.sy;
+        const d2=dx*dx+dy*dy;
+        if (d2<bestD2){bestD2=d2;best={...p, type:'racing'};}
+      }
+
+      // 检查赛道点
+      for (const p of allScreenPts){
+        const dx=mx-p.sx, dy=my-p.sy;
+        const d2=dx*dx+dy*dy;
+        if (d2<bestD2){bestD2=d2;best=p;}
+      }
+
+      return (best && bestD2<=hitR2) ? best : null;
+    }
+
+    cv.addEventListener('mousemove',(e)=>{
+      const rect = cv.getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const p = findHoverPoint(mx,my);
+
+      if (!p){
+        tooltip.style.display='none';
+        return;
+      }
+      tooltip.style.display='block';
+      tooltip.style.left = (e.clientX + 15) + 'px';
+      tooltip.style.top = (e.clientY + 15) + 'px';
+
+      let html = '';
+      if (p.type === 'racing'){
+        const typeLabels = {center:'中心点', inner:'内边界', outer:'外边界'};
+        html = `<b>赛车线 #${p.idx}</b><br>` +
+          `X: <b>${p.raw.x.toFixed(6)}</b><br>` +
+          `Y: <b>${p.raw.y.toFixed(6)}</b>`;
+        if (p.raw.v !== null){
+          html += `<br><b>速度:</b> ${p.raw.v.toFixed(3)} m/s`;
+        }
+        if (p.raw.t !== null){
+          html += `<br><b>到达时间:</b> ${p.raw.t.toFixed(3)} s`;
+        }
+      } else {
+        const typeLabels = {center:'中心点', inner:'内边界', outer:'外边界'};
+        html = `<b>${typeLabels[p.type]}</b><br>` +
+          `Index: <b>${p.raw.idx}</b><br>` +
+          `X: <b>${p.raw.x.toFixed(6)}</b><br>` +
+          `Y: <b>${p.raw.y.toFixed(6)}</b>`;
+      }
+      tooltip.innerHTML = html;
+    });
+
+    cv.addEventListener('mouseleave',()=>{ tooltip.style.display='none'; });
+
+    loadBtn.addEventListener('click', async ()=>{
+      const file = fileInput.files && fileInput.files[0];
+      if (!file){
+        setMsg('请先选择CSV文件', false);
+        return;
+      }
+      try{
+        const text = await file.text();
+        const rows = parseCSV(text);
+        loadRows(rows);
+        draw();
+        setMsg(`加载成功：${file.name}（${rows.length} 行）`, true);
+      }catch(err){
+        setMsg('加载失败：' + err.message, false);
+      }
+    });
+
+    document.getElementById('drawRacingLineBtn').addEventListener('click', ()=>{
+      const text = document.getElementById('racingLineInput').value;
+      if (!text.trim()){
+        setRacingLineMsg('请先粘贴赛车线坐标', false);
+        return;
+      }
+      try{
+        racingLine = parseRacingLine(text);
+        if (racingLine.length < 2){
+          setRacingLineMsg('有效坐标点不足', false);
+          return;
+        }
+        draw();
+        setRacingLineMsg(`加载成功：${racingLine.length} 个点`, true);
+      }catch(err){
+        setRacingLineMsg('解析失败：' + err.message, false);
+      }
+    });
+
+    // 显示选项变化时重绘
+    [showCenter, showInner, showOuter, showIndex, showSpeedColor, showTimeLabel].forEach(el => {
+      el.addEventListener('change', draw);
+    });
+
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+  </script>
+</body>
+</html>
