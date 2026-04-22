@@ -35,6 +35,103 @@ deepracer-notebook/
     └── reinvent_base.npy       # 默认赛道文件
 ```
 
+## 环境配置（保姆级指南）
+
+### 1. 安装 Python
+
+**Windows 系统：**
+
+1. 访问 Python 官网下载页面：https://www.python.org/downloads/
+2. 点击 **Download Python 3.10.x** 或更高版本下载安装包
+3. 运行安装程序，**重要**：勾选 "Add Python to PATH"（将 Python 添加到系统环境变量）
+4. 点击 "Install Now" 完成安装
+
+**macOS 系统：**
+
+```bash
+# 使用 Homebrew 安装
+brew install python@3.10
+```
+
+**Linux 系统：**
+
+```bash
+# Ubuntu/Debian
+sudo apt update
+sudo apt install python3 python3-pip python3-venv
+```
+
+### 2. 验证 Python 安装
+
+打开终端（Windows 按 `Win + R`，输入 `cmd`；macOS 按 `Cmd + Space`，搜索 "Terminal"），输入：
+
+```bash
+python --version
+# 或
+python3 --version
+```
+
+应显示 Python 3.8.x 或更高版本，例如：`Python 3.10.9`
+
+### 3. 配置环境变量（Windows 补充）
+
+如果安装时未勾选 "Add Python to PATH"，手动配置：
+
+1. 按 `Win + R`，输入 `sysdm.cpl`，回车
+2. 点击 **高级** → **环境变量**
+3. 在 **系统变量** 中找到 `Path`，双击编辑
+4. 点击 **新建**，添加以下路径：
+   - `C:\Users\你的用户名\AppData\Local\Programs\Python\Python310`
+   - `C:\Users\你的用户名\AppData\Local\Programs\Python\Python310\Scripts`
+5. 点击 **确定** 保存
+
+### 4. 克隆或下载项目
+
+```bash
+# 如果使用 Git
+git clone https://github.com/Tatakai/deepracer-notebook.git
+cd deepracer-notebook
+
+# 或者直接解压下载的 ZIP 文件到指定目录
+```
+
+### 5. 创建虚拟环境（推荐）
+
+```bash
+# 创建虚拟环境
+python -m venv venv
+
+# 激活虚拟环境
+# Windows:
+venv\Scripts\activate
+# macOS/Linux:
+source venv/bin/activate
+```
+
+### 6. 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+### 7. 验证安装
+
+```bash
+python -c "import numpy, scipy, matplotlib, ipython; print('依赖安装成功！')"
+```
+
+如果显示 "依赖安装成功！" 则说明所有依赖已正确安装。
+
+### 8. 运行项目
+
+```bash
+jupyter notebook DeepRacer_Workflow.ipynb
+```
+
+浏览器会自动打开 Jupyter Notebook 界面，按顺序运行所有单元格即可。
+
+---
+
 ## 快速开始
 
 1. **安装依赖：**

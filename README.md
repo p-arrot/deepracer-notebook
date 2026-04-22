@@ -2,6 +2,8 @@
 
 A standalone Jupyter Notebook workflow for optimizing racing lines and speed profiles for AWS DeepRacer tracks.
 
+[English](./README.md) | [中文](./README_zh.md)
+
 ## Overview
 
 This project provides a complete 5-step workflow for computing optimal racing lines with safety distance constraints, speed profiles based on a friction circle model, and a reward function for AWS DeepRacer.
